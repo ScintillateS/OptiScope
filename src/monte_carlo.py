@@ -1,23 +1,28 @@
+import yfinance as yf
 import numpy as np
 import pandas as pd
-import yfinance as yf
+import matplotlib.pyplot as plt
+import seaborn as sns
 
-def fetch_price_data(tickers, start="2020-01-01"):
-    raw_data = yf.download(tickers, start=start)
-    data = raw_data['Adj Close'] if 'Adj Close' in raw_data.columns else raw_data.xs('Adj Close', level=1, axis=1)
+def fetch_price_data(tickers, start="2015-01-01"):
+    df = yf.download(tickers, start=start, group_by="ticker", auto_adjust=True)
 
-    if isinstance(data.columns, pd.MultiIndex):
-        if 'Adj Close' in data.columns.levels[0]:
-            return data['Adj Close']
-        else:
-            raise KeyError("'Adj Close' not found in multi-index columns.")
-    elif 'Adj Close' in data.columns:
-        return data[['Adj Close']]
+    if len(tickers) == 1:
+        df = df["Close"]
+        df = df.to_frame(name=tickers[0])
     else:
-        raise KeyError(f"'Adj Close' not found in downloaded data columns: {data.columns}")
+        prices = pd.DataFrame()
+        for ticker in tickers:
+            if (ticker, 'Close') in df.columns:
+                prices[ticker] = df[ticker]['Close']
+            else:
+                raise ValueError(f"'Close' not found for {ticker}")
+        df = prices
 
-def run_monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
-    returns = data.pct_change().dropna()
+    return df
+
+def simulate_portfolios(price_data, num_portfolios=5000, risk_free_rate=0.01):
+    returns = price_data.pct_change().dropna()
     mean_returns = returns.mean()
     cov_matrix = returns.cov()
 
@@ -25,18 +30,29 @@ def run_monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
     weights_record = []
 
     for i in range(num_portfolios):
-        weights = np.random.random(len(data.columns))
+        weights = np.random.random(len(price_data.columns))
         weights /= np.sum(weights)
         weights_record.append(weights)
 
         portfolio_return = np.sum(mean_returns * weights) * 252
-        portfolio_stddev = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
-        sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_stddev
+        portfolio_std_dev = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
+        sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_std_dev
 
         results[0, i] = portfolio_return
-        results[1, i] = portfolio_stddev
+        results[1, i] = portfolio_std_dev
         results[2, i] = sharpe_ratio
-        results[3, i] = i
+        results[3, i] = i  # ID for later reference
 
-    results_df = pd.DataFrame(results.T, columns=["Return", "Volatility", "Sharpe", "Index"])
+    results_df = pd.DataFrame(results.T, columns=["Return", "Volatility", "Sharpe Ratio", "ID"])
     return results_df, weights_record
+
+def plot_portfolios(results_df):
+    plt.figure(figsize=(10, 7))
+    scatter = plt.scatter(results_df["Volatility"], results_df["Return"],
+                          c=results_df["Sharpe Ratio"], cmap="viridis", alpha=0.7)
+    plt.colorbar(scatter, label="Sharpe Ratio")
+    plt.xlabel("Volatility")
+    plt.ylabel("Expected Return")
+    plt.title("Monte Carlo Portfolio Optimization")
+    plt.grid(True)
+    return plt
