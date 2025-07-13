@@ -5,11 +5,14 @@ import yfinance as yf
 def fetch_price_data(tickers, start="2020-01-01"):
     data = yf.download(tickers, start=start)
     if isinstance(data.columns, pd.MultiIndex):
-        return data["Adj Close"]
-    elif "Adj Close" in data.columns:
-        return data[["Adj Close"]]
+        if 'Adj Close' in data.columns.levels[0]:
+            return data['Adj Close']
+        else:
+            raise KeyError("'Adj Close' not found in multi-index columns.")
+    elif 'Adj Close' in data.columns:
+        return data[['Adj Close']]
     else:
-        raise ValueError("Could not find 'Adj Close' column in downloaded data.")
+        raise KeyError(f"'Adj Close' not found in downloaded data columns: {data.columns}")
 
 def run_monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
     returns = data.pct_change().dropna()
