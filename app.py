@@ -1,42 +1,52 @@
 import streamlit as st
 import matplotlib.pyplot as plt
-from src.monte_carlo import fetch_price_data, monte_carlo_simulation
+import seaborn as sns
+from src.monte_carlo import fetch_price_data, run_monte_carlo_simulation
 
-st.title("OptiScope – Portfolio Optimizer")
+st.set_page_config(page_title="OptiScope – Portfolio Optimizer", layout="wide")
 
-# Ticker input
-tickers = st.text_input("Enter tickers separated by commas", "AAPL, MSFT, AMZN, TSLA")
+st.title("📈 OptiScope – Portfolio Optimizer")
+st.markdown("Run Monte Carlo simulations on your stock portfolio to visualize risk, return, and the efficient frontier.")
 
-# Number of portfolios
-num_portfolios = st.slider("Number of portfolios to simulate", 1000, 10000, 5000)
+# Ticker input and processing
+tickers_input = st.text_input("Enter tickers (comma-separated)", "AAPL,MSFT,GOOG")
+tickers = [ticker.strip().upper() for ticker in tickers_input.split(",") if ticker.strip()]
 
-risk_free_rate = st.number_input("Risk-free rate (%)", min_value=0.0, max_value=5.0, value=0.01) / 100
+# Parameters
+num_portfolios = st.slider("Number of Simulations", 1000, 20000, 5000, step=1000)
+risk_free_rate = st.slider("Risk-Free Rate (as decimal)", 0.0, 0.10, 0.01, step=0.005)
 
+# Run simulation
 if st.button("Run Optimization"):
-    tickers = [ticker.strip().upper() for ticker in tickers.split(",")]
-    data = fetch_price_data(tickers)
+    try:
+        price_data = fetch_price_data(tickers, start="2020-01-01")
+        results_df, weights_record = run_monte_carlo_simulation(price_data, num_portfolios, risk_free_rate)
 
-    results, weights_record = monte_carlo_simulation(data, num_portfolios=num_portfolios, risk_free_rate=risk_free_rate)
+        # Display results
+        max_sharpe_idx = results_df["Sharpe"].idxmax()
+        max_sharpe_port = results_df.loc[max_sharpe_idx]
+        max_sharpe_weights = weights_record[int(max_sharpe_port["Index"])]
 
-    max_sharpe_idx = results[2].argmax()
-    max_sharpe_return = results[0, max_sharpe_idx]
-    max_sharpe_volatility = results[1, max_sharpe_idx]
-    optimal_weights = weights_record[max_sharpe_idx]
+        st.subheader("Optimal Portfolio (Max Sharpe Ratio)")
+        st.write(f"**Sharpe Ratio:** {max_sharpe_port['Sharpe']:.2f}")
+        st.write(f"**Expected Return:** {max_sharpe_port['Return']:.2%}")
+        st.write(f"**Volatility:** {max_sharpe_port['Volatility']:.2%}")
 
-    st.subheader("Optimal Portfolio Weights")
-    for ticker, weight in zip(tickers, optimal_weights):
-        st.write(f"{ticker}: {weight:.2%}")
+        weights_df = (
+            {ticker: f"{weight:.2%}" for ticker, weight in zip(price_data.columns, max_sharpe_weights)}
+        )
+        st.write("**Weights:**")
+        st.json(weights_df)
 
-    # Plot Efficient Frontier
-    st.subheader("Efficient Frontier")
-    fig, ax = plt.subplots(figsize=(12, 6))
+        # Efficient frontier plot
+        plt.figure(figsize=(10, 6))
+        sns.scatterplot(data=results_df, x="Volatility", y="Return", hue="Sharpe", palette="viridis", edgecolor=None)
+        plt.scatter(max_sharpe_port["Volatility"], max_sharpe_port["Return"], marker="*", color="red", s=200, label="Max Sharpe")
+        plt.title("Efficient Frontier")
+        plt.xlabel("Volatility (Std Dev)")
+        plt.ylabel("Expected Return")
+        plt.legend()
+        st.pyplot(plt.gcf())
 
-    scatter = ax.scatter(results[1, :], results[0, :], c=results[2, :], cmap='viridis', marker='o', s=10)
-    ax.scatter(max_sharpe_volatility, max_sharpe_return, c='red', marker='*', s=300, label='Optimal Portfolio')
-    ax.set_xlabel('Volatility (Risk)')
-    ax.set_ylabel('Expected Return')
-    ax.set_title('Efficient Frontier')
-    ax.legend()
-    fig.colorbar(scatter, label='Sharpe Ratio')
-
-    st.pyplot(fig)
+    except Exception as e:
+        st.error(f"An error occurred: {e}")
