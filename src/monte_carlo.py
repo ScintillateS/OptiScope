@@ -2,14 +2,19 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 
-def fetch_price_data(tickers, start="2018-01-01"):
-    data = yf.download(tickers, start=start)['Adj Close']
-    return data.dropna()
+def fetch_price_data(tickers, start="2020-01-01"):
+    data = yf.download(tickers, start=start)
+    if isinstance(data.columns, pd.MultiIndex):
+        return data["Adj Close"]
+    elif "Adj Close" in data.columns:
+        return data[["Adj Close"]]
+    else:
+        raise ValueError("Could not find 'Adj Close' column in downloaded data.")
 
-def monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
-    log_returns = np.log(data / data.shift(1)).dropna()
-    mean_returns = log_returns.mean() * 252
-    cov_matrix = log_returns.cov() * 252
+def run_monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
+    returns = data.pct_change().dropna()
+    mean_returns = returns.mean()
+    cov_matrix = returns.cov()
 
     results = np.zeros((4, num_portfolios))
     weights_record = []
@@ -19,8 +24,8 @@ def monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
         weights /= np.sum(weights)
         weights_record.append(weights)
 
-        portfolio_return = np.sum(mean_returns * weights)
-        portfolio_stddev = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+        portfolio_return = np.sum(mean_returns * weights) * 252
+        portfolio_stddev = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights))) * np.sqrt(252)
         sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_stddev
 
         results[0, i] = portfolio_return
@@ -28,4 +33,5 @@ def monte_carlo_simulation(data, num_portfolios=5000, risk_free_rate=0.01):
         results[2, i] = sharpe_ratio
         results[3, i] = i
 
-    return results, weights_record
+    results_df = pd.DataFrame(results.T, columns=["Return", "Volatility", "Sharpe", "Index"])
+    return results_df, weights_record
