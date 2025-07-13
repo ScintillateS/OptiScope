@@ -3,7 +3,9 @@ import pandas as pd
 import yfinance as yf
 
 def fetch_price_data(tickers, start="2020-01-01"):
-    data = yf.download(tickers, start=start)
+    raw_data = yf.download(tickers, start=start)
+    data = raw_data['Adj Close'] if 'Adj Close' in raw_data.columns else raw_data.xs('Adj Close', level=1, axis=1)
+
     if isinstance(data.columns, pd.MultiIndex):
         if 'Adj Close' in data.columns.levels[0]:
             return data['Adj Close']
