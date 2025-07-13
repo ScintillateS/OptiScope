@@ -3,16 +3,19 @@ import numpy as np
 import pandas as pd
 
 def fetch_price_data(tickers, start="2018-01-01"):
-    data = yf.download(tickers, start=start, group_by='ticker', auto_adjust=False)
-    
-    if isinstance(tickers, str) or len(tickers.split(',')) == 1:
-        # Single ticker
-        return data['Adj Close']
-    else:
-        adj_close = pd.DataFrame()
-        for ticker in tickers.split(','):
-            adj_close[ticker.strip()] = data[ticker.strip()]['Adj Close']
-        return adj_close
+    # Download multi-ticker data with multi-index columns
+    data = yf.download(tickers.split(','), start=start, group_by='ticker', auto_adjust=True)
+
+    # Prepare Adj Close DataFrame
+    adj_close = pd.DataFrame()
+    for ticker in tickers.split(','):
+        ticker = ticker.strip()
+        try:
+            adj_close[ticker] = data[ticker]['Adj Close']
+        except (KeyError, TypeError):
+            raise KeyError(f"'Adj Close' not found for ticker '{ticker}'.")
+
+    return adj_close.dropna()
 
 def monte_carlo_simulation(price_data, num_simulations=5000, risk_free_rate=0.01):
     returns = price_data.pct_change().dropna()
@@ -35,6 +38,6 @@ def monte_carlo_simulation(price_data, num_simulations=5000, risk_free_rate=0.01
         results[0, i] = portfolio_return
         results[1, i] = portfolio_std_dev
         results[2, i] = sharpe_ratio
-        results[3, i] = i  # Store index for tracking
+        results[3, i] = i
 
     return results, weights_record, list(price_data.columns)
