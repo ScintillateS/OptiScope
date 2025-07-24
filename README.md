@@ -18,7 +18,6 @@ OptiScope is a Python-based portfolio optimization tool using Monte Carlo simula
 ---
 
 ## 📸 Preview
-*(Insert a screenshot of your deployed app here)*
 
 ---
 
